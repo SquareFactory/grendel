@@ -20,6 +20,7 @@ package bmc
 import (
 	"errors"
 	"fmt"
+	"net"
 
 	"github.com/ubccr/grendel/bmc"
 	"github.com/ubccr/grendel/model"
@@ -33,7 +34,11 @@ func systemMgr(host *model.Host) (bmc.SystemManager, error) {
 
 	bmcAddress := bmcIntf.FQDN
 	if bmcAddress == "" {
-		bmcAddress = bmcIntf.IP.String()
+		ip, _, err := net.ParseCIDR(bmcIntf.IP.String())
+		if err != nil {
+			return nil, err
+		}
+		bmcAddress = ip.String()
 	}
 
 	if bmcAddress == "" {
