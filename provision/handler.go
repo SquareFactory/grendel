@@ -28,6 +28,7 @@ import (
 	"text/template"
 	"time"
 
+	"github.com/Masterminds/sprig/v3"
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
@@ -168,7 +169,7 @@ func (h *Handler) Ipxe(c echo.Context) error {
 	commandLine := bootImage.CommandLine
 
 	if commandLine != "" {
-		cmdTmpl, err := template.New("cmd").Parse(commandLine)
+		cmdTmpl, err := template.New("cmd").Funcs(sprig.FuncMap()).Parse(commandLine)
 		if err != nil {
 			return err
 		}

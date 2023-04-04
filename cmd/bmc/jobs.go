@@ -38,7 +38,7 @@ func NewJobRunner(fanout int) *JobRunner {
 }
 
 func (j *JobRunner) Wait() {
-	j.limit.Wait()
+	j.limit.WaitAndClose()
 }
 
 func (j *JobRunner) RunStatus(host *model.Host) {
