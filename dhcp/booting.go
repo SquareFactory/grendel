@@ -108,6 +108,20 @@ func (s *Server) bootingHandler4(host *model.Host, serverIP net.IP, req, resp *d
 		}
 		resp.UpdateOption(dhcpv4.OptBootFileName(token))
 
+	case firmware.EFIARM64:
+		log.Printf("EFI ARM64 boot PXE client")
+		if host.Firmware != 0 {
+			log.Infof("Overriding firmware for host: %s", req.ClientHWAddr.String())
+			fwtype = host.Firmware
+		}
+		resp.UpdateOption(dhcpv4.OptTFTPServerName(serverIP.String()))
+
+		token, err := model.NewFirmwareToken(req.ClientHWAddr.String(), fwtype)
+		if err != nil {
+			return fmt.Errorf("EFI failed to generated signed Firmware token")
+		}
+		resp.UpdateOption(dhcpv4.OptBootFileName(token))
+
 	case firmware.GRENDEL:
 		// Chainload to HTTP
 		token, err := model.NewBootToken(host.ID.String(), req.ClientHWAddr.String())
