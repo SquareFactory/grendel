@@ -146,20 +146,12 @@ func loadImageJSON() error {
 		return err
 	}
 
-	for _, i := range imageList {
-		err = i.CheckPathsExist()
-		if err != nil {
-			cmd.Log.Infof("Failed to load boot image : file %s does not exist", i.Name)
-		} else {
-			cmd.Log.Infof("Successfully loaded %s boot image", i.Name)
-		}
-	}
-
 	err = DB.StoreBootImages(imageList)
 	if err != nil {
 		return err
 	}
 
+	cmd.Log.Infof("Successfully loaded %d boot images", len(imageList))
 	return nil
 }
 
