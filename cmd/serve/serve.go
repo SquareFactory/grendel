@@ -149,10 +149,9 @@ func loadImageJSON() error {
 	for _, i := range imageList {
 		err = i.CheckPathsExist()
 		if err != nil {
-			cmd.Log.Infof("Failed to load boot images : file does not exist")
-			cmd.Log.Infof("Make sure that boot images exists before attempting PXE boot")
+			cmd.Log.Infof("Failed to load boot image : file %s does not exist", i.Name)
 		} else {
-			cmd.Log.Infof("Successfully loaded %d boot images", len(imageList))
+			cmd.Log.Infof("Successfully loaded %s boot image", i.Name)
 		}
 	}
 

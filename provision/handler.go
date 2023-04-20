@@ -32,7 +32,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"github.com/ubccr/grendel/cmd"
 	"github.com/ubccr/grendel/model"
 )
 
@@ -131,26 +130,6 @@ func (h *Handler) verifyClaims(c echo.Context) (*model.BootImage, *model.Host, *
 			"mac":     claims.MAC,
 		}).Error("got invalid boot interface for host")
 		return nil, nil, nil, nil, echo.NewHTTPError(http.StatusBadRequest, "invalid boot interface").SetInternal(err)
-	}
-
-	imageList, err := h.DB.BootImages()
-	if err != nil {
-		return nil, nil, nil, nil, echo.NewHTTPError(http.StatusBadRequest, "Could not list boot images").SetInternal(err)
-	}
-
-	for _, i := range imageList {
-		err = i.CheckPathsExist()
-		if err != nil {
-			cmd.Log.Infof("Failed to load boot images : file does not exist")
-			cmd.Log.Infof("Make sure that boot images exists before attempting PXE boot")
-		} else {
-			cmd.Log.Infof("Successfully loaded %d boot images", len(imageList))
-		}
-		err = h.DB.StoreBootImages(imageList)
-		if err != nil {
-			return nil, nil, nil, nil, echo.NewHTTPError(http.StatusBadRequest, "Could not save boot images to datastore")
-		}
-
 	}
 
 	bootImage, err := h.LoadBootImageWithDefault(host.BootImage)
