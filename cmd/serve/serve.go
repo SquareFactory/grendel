@@ -44,12 +44,14 @@ var (
 		Long:  `Run grendel services`,
 		RunE: func(command *cobra.Command, args []string) error {
 			if hostsFile != "" {
+				os.Setenv("HOSTS_FILE", hostsFile)
 				err := loadHostJSON()
 				if err != nil {
 					return err
 				}
 			}
 			if imagesFile != "" {
+				os.Setenv("IMAGES_FILE", imagesFile)
 				err := loadImageJSON()
 				if err != nil {
 					return err
