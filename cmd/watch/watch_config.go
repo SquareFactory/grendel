@@ -41,7 +41,7 @@ func loadConfig() (*Config, error) {
 	return config, err
 }
 
-func watchConfig(ctx context.Context, configChan chan<- *Config) {
+func WatchConfig(ctx context.Context, configChan chan<- *Config) {
 
 	var lastModTime [2]time.Time
 	hostFile := os.Getenv("HOSTS_FILE")
