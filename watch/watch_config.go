@@ -1,13 +1,18 @@
 package watch
 
 import (
+	"context"
 	"encoding/json"
 	"os"
+	"time"
+
+	"github.com/fsnotify/fsnotify"
+	"github.com/ubccr/grendel/cmd"
 )
 
 type Config struct {
-	host  grendelHost  `json:"grendelHost"`
-	image grendelImage `json:"grendelImage"`
+	Host  grendelHost  `json:"grendelHost"`
+	Image grendelImage `json:"grendelImage"`
 }
 
 func loadConfig() (*Config, error) {
@@ -25,29 +30,38 @@ func loadConfig() (*Config, error) {
 	defer imagesFile.Close()
 
 	config := &Config{}
-	if err := json.NewDecoder(hostsFile).Decode(&config.host); err != nil {
+	if err := json.NewDecoder(hostsFile).Decode(&config.Host); err != nil {
 		return nil, err
 	}
 
-	if err := json.NewDecoder(imagesFile).Decode(&config.image); err != nil {
+	if err := json.NewDecoder(imagesFile).Decode(&config.Image); err != nil {
 		return nil, err
 	}
 
 	return config, err
 }
 
-/* func watchConfig(ctx context.Context, configChan chan<- *Config) {
+func watchConfig(ctx context.Context, configChan chan<- *Config) {
 
-	var lastModTime time.Time
+	var lastModTime [2]time.Time
+	hostFile := os.Getenv("HOSTS_FILE")
+	imageFile := os.Getenv("IMAGES_FILE")
 
 	// Initial load
 	func() {
-		stat, err := os.Stat(os.Getenv("HOSTS_FILE"))
+		hostStat, err := os.Stat(hostFile)
 		if err != nil {
-			cmd.Log.Infof("failed to stat %s : %w ", filename, err)
+			cmd.Log.Infof("failed to stat %s : %w ", hostFile, err)
 			return
 		}
-		lastModTime = stat.ModTime()
+		lastModTime[0] = hostStat.ModTime()
+
+		imageStat, err := os.Stat(imageFile)
+		if err != nil {
+			cmd.Log.Infof("failed to stat %s : %w ", imageFile, err)
+			return
+		}
+		lastModTime[1] = imageStat.ModTime()
 
 		cmd.Log.Infof("initial config detected")
 		config, err := loadConfig()
@@ -65,11 +79,11 @@ func loadConfig() (*Config, error) {
 	}
 	defer watcher.Close()
 
-	if err = watcher.Add(os.Getenv("HOSTS_FILE")); err != nil {
+	if err = watcher.Add(hostFile); err != nil {
 		cmd.Log.Infof("failed to add host file to config reloader")
 	}
 
-	if err = watcher.Add(os.Getenv("IMAGES_FILE")); err != nil {
+	if err = watcher.Add(imageFile); err != nil {
 		cmd.Log.Infof("failed to add image file to config reloader")
 	}
 
@@ -85,16 +99,22 @@ func loadConfig() (*Config, error) {
 				return
 			}
 
-			stat, err := os.Stat(filename)
+			hostStat, err := os.Stat(hostFile)
 			if err != nil {
-				cmd.Log.Infof("failed to stat file %s: %w", filename, err)
+				cmd.Log.Infof("failed to stat file %s: %w", hostFile, err)
 			}
 
-			if !stat.ModTime().Equal(lastModTime) {
-				lastModTime = stat.ModTime()
+			imageStat, err := os.Stat(imageFile)
+			if err != nil {
+				cmd.Log.Infof("failed to stat file %s: %w", hostFile, err)
+			}
+
+			if hostStat.ModTime() != lastModTime[0] || imageStat.ModTime() != lastModTime[1] {
+				lastModTime[0] = hostStat.ModTime()
+				lastModTime[1] = imageStat.ModTime()
 				cmd.Log.Infof("new config detected")
 
-				config, err := loadConfig(filename)
+				config, err := loadConfig()
 				if err != nil {
 					cmd.Log.Infof("failed to load config : %w", err)
 					continue
@@ -120,7 +140,7 @@ func loadConfig() (*Config, error) {
 func ConfigReloader(ctx context.Context, configChan <-chan *Config, restartGrendel func(ctx context.Context, config *Config)) error {
 	var configContext context.Context
 	var configCancel context.CancelFunc
-	// Channel used to assure only one handleConfig can be launched
+	// Channel used to assure only one restartGrendel can be launched
 	doneChan := make(chan struct{})
 
 	for {
@@ -160,4 +180,3 @@ func ConfigReloader(ctx context.Context, configChan <-chan *Config, restartGrend
 		}
 	}
 }
-*/

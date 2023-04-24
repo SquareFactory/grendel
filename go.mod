@@ -11,6 +11,7 @@ require (
 	github.com/coreos/butane v0.18.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fatih/color v1.15.0
+	github.com/fsnotify/fsnotify v1.6.0
 	github.com/go-playground/validator/v10 v10.12.0
 	github.com/hako/branca v0.0.0-20200807062402-6052ac720505
 	github.com/hashicorp/go-retryablehttp v0.7.2
@@ -55,7 +56,6 @@ require (
 	github.com/coreos/vcontext v0.0.0-20230327231217-60faa904e151 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/eknkc/basex v1.0.1 // indirect
-	github.com/fsnotify/fsnotify v1.6.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/golang-jwt/jwt v3.2.2+incompatible // indirect
