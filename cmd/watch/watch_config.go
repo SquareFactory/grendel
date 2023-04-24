@@ -11,8 +11,8 @@ import (
 )
 
 type Config struct {
-	Host  grendelHost  `json:"grendelHost"`
-	Image grendelImage `json:"grendelImage"`
+	Hosts  []Host
+	Images []Image
 }
 
 func loadConfig() (*Config, error) {
@@ -30,11 +30,11 @@ func loadConfig() (*Config, error) {
 	defer imagesFile.Close()
 
 	config := &Config{}
-	if err := json.NewDecoder(hostsFile).Decode(&config.Host); err != nil {
+	if err := json.NewDecoder(hostsFile).Decode(&config.Hosts); err != nil {
 		return nil, err
 	}
 
-	if err := json.NewDecoder(imagesFile).Decode(&config.Image); err != nil {
+	if err := json.NewDecoder(imagesFile).Decode(&config.Images); err != nil {
 		return nil, err
 	}
 

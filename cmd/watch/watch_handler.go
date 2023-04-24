@@ -11,11 +11,11 @@ import (
 
 func restartGrendel(ctx context.Context, config *Config) error {
 	// json.marshal new config
-	newHostConfig, err := json.Marshal(config.Host)
+	newHostConfig, err := json.Marshal(config.Hosts)
 	if err != nil {
 		return err
 	}
-	newImageConfig, err := json.Marshal(config.Image)
+	newImageConfig, err := json.Marshal(config.Images)
 	if err != nil {
 		return err
 	}
