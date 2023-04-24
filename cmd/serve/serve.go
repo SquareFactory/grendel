@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/ubccr/grendel/cmd"
+	"github.com/ubccr/grendel/cmd/watch"
 	"github.com/ubccr/grendel/model"
 	"gopkg.in/tomb.v2"
 )
@@ -57,6 +58,11 @@ var (
 				if err != nil {
 					return err
 				}
+			}
+
+			if imagesFile != "" && hostsFile != "" {
+				configChan := make(chan *watch.Config)
+				go watch.WatchConfig(context.Background(), configChan)
 			}
 
 			return runServices()
