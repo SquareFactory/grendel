@@ -3,41 +3,77 @@ package watch
 import (
 	"context"
 	"encoding/json"
+	"io/ioutil"
 	"os"
-	"os/exec"
 
 	"github.com/ubccr/grendel/cmd"
+	"github.com/ubccr/grendel/model"
 )
 
+var DB model.DataStore
+
 func restartGrendel(ctx context.Context, config *Config) error {
-	// json.marshal new config
-	newHostConfig, err := json.Marshal(config.Hosts)
+	hostFile := os.Getenv("HOSTS_FILE")
+	imageFile := os.Getenv("IMAGES_FILE")
+
+	// load new config
+	if err := loadJson(hostFile, imageFile, DB); err != nil {
+		return err
+	}
+
+	return nil
+
+}
+
+func loadJson(hostFile, imageFile string, DB model.DataStore) error {
+	host, err := os.Open(hostFile)
 	if err != nil {
 		return err
 	}
-	newImageConfig, err := json.Marshal(config.Images)
+	defer host.Close()
+
+	jsonBlob, err := ioutil.ReadAll(host)
 	if err != nil {
 		return err
 	}
 
-	// writing new configuration to .json files
-	if err := os.WriteFile(os.Getenv("HOSTS_FILE"), newHostConfig, 0666); err != nil {
-		return err
-	}
-	if err := os.WriteFile(os.Getenv("IMAGES_FILE"), newImageConfig, 0666); err != nil {
-		return err
-	}
+	var hostList model.HostList
 
-	// restarting grendel
-	command := exec.Command("/app/grendel", "serve", "--debug", "--verbose", "-c", "/secret/grendel.toml", "--hosts", os.Getenv("HOSTS_FILE"), "--images", os.Getenv("IMAGES_FILE"), "--listen", "0.0.0.0")
-
-	if err := command.Start(); err != nil {
-		cmd.Log.Errorf("error restarting grendel: %w", err)
+	err = json.Unmarshal(jsonBlob, &hostList)
+	if err != nil {
 		return err
 	}
 
-	cmd.Log.Infof("restarting grendel")
-	command.Wait()
+	err = DB.StoreHosts(hostList)
+	if err != nil {
+		return err
+	}
+
+	cmd.Log.Infof("Successfully loaded %d hosts", len(hostList))
+
+	image, err := os.Open(imageFile)
+	if err != nil {
+		return err
+	}
+	defer image.Close()
+
+	jsonBlob, err = ioutil.ReadAll(image)
+	if err != nil {
+		return err
+	}
+
+	var imageList model.HostList
+	err = json.Unmarshal(jsonBlob, &hostList)
+	if err != nil {
+		return err
+	}
+
+	err = DB.StoreHosts(imageList)
+	if err != nil {
+		return err
+	}
+
+	cmd.Log.Infof("Successfully loaded %d hosts", len(hostList))
 
 	return nil
 }
