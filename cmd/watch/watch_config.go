@@ -2,40 +2,34 @@ package watch
 
 import (
 	"context"
+	"errors"
 	"os"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/ubccr/grendel/cmd"
+	"github.com/ubccr/grendel/util/channel"
 )
 
-func WatchConfig(ctx context.Context, configLoader func() error, errChan chan<- error) {
-
-	var lastModTime [2]time.Time
-	hostFile := os.Getenv("HOSTS_FILE")
-	imageFile := os.Getenv("IMAGES_FILE")
+func WatchConfig(ctx context.Context, files []string, configLoader func() error, errChan chan<- error) {
+	var lastModTimes = make([]time.Time, 0, len(files))
 
 	// Initial load
+	cmd.Log.Info("loading initial config")
 	func() {
-		hostStat, err := os.Stat(hostFile)
-		if err != nil {
-			cmd.Log.Infof("failed to stat %s : %w ", hostFile, err)
-			errChan <- err
-			return
+		for _, file := range files {
+			fileStat, err := os.Stat(file)
+			if err != nil {
+				cmd.Log.Errorf("failed to stat %s: %w", file, err)
+				errChan <- err
+				return
+			}
+			lastModTimes = append(lastModTimes, fileStat.ModTime())
 		}
-		lastModTime[0] = hostStat.ModTime()
-
-		imageStat, err := os.Stat(imageFile)
-		if err != nil {
-			cmd.Log.Infof("failed to stat %s : %w ", imageFile, err)
-			errChan <- err
-			return
-		}
-		lastModTime[1] = imageStat.ModTime()
 
 		cmd.Log.Infof("initial config detected")
 		if err := configLoader(); err != nil {
-			cmd.Log.Infof("failed to load config : %w", err)
+			cmd.Log.Errorf("failed to load config : %w", err)
 			errChan <- err
 			return
 		}
@@ -48,43 +42,43 @@ func WatchConfig(ctx context.Context, configLoader func() error, errChan chan<- 
 	}
 	defer watcher.Close()
 
-	if err = watcher.Add(hostFile); err != nil {
-		cmd.Log.Panicf("failed to add host file to config reloader")
+	for _, file := range files {
+		if err = watcher.Add(file); err != nil {
+			cmd.Log.Panicf("failed to add host file to config reloader")
+		}
 	}
 
-	if err = watcher.Add(imageFile); err != nil {
-		cmd.Log.Panicf("failed to add image file to config reloader")
-	}
+	debouncedEvents := channel.Debounce(watcher.Events, time.Second)
 
 	for {
-
 		select {
 
 		case <-ctx.Done():
 			return
 
-		case _, ok := <-watcher.Events:
+		case _, ok := <-debouncedEvents:
 			if !ok {
 				return
 			}
 
-			hostStat, err := os.Stat(hostFile)
-			if err != nil {
-				cmd.Log.Infof("failed to stat file %s: %w", hostFile, err)
+			var hasChanged bool
+			for i, file := range files {
+				fileStat, err := os.Stat(file)
+				if err != nil {
+					cmd.Log.Errorf("failed to stat %s: %w", file, err)
+					errChan <- err
+					return
+				}
+
+				hasChanged = hasChanged || fileStat.ModTime() != lastModTimes[i]
+				lastModTimes[i] = fileStat.ModTime()
 			}
 
-			imageStat, err := os.Stat(imageFile)
-			if err != nil {
-				cmd.Log.Infof("failed to stat file %s: %w", hostFile, err)
-			}
-
-			if hostStat.ModTime() != lastModTime[0] || imageStat.ModTime() != lastModTime[1] {
-				lastModTime[0] = hostStat.ModTime()
-				lastModTime[1] = imageStat.ModTime()
+			if hasChanged {
 				cmd.Log.Infof("new config detected")
 
 				if err := configLoader(); err != nil {
-					cmd.Log.Infof("failed to load config : %w", err)
+					cmd.Log.Errorf("failed to load config : %w", err)
 					continue
 				}
 				select {
@@ -100,12 +94,12 @@ func WatchConfig(ctx context.Context, configLoader func() error, errChan chan<- 
 			if !ok {
 				return
 			}
-			cmd.Log.Infof("config reloader thrown an error : %w", err)
+			cmd.Log.Errorf("config reloader thrown an error : %w", err)
 		}
 	}
 }
 
-func ConfigReloader(ctx context.Context, errChan <-chan error, restartGrendel func(ctx context.Context) error) error {
+func ConfigReloader(ctx context.Context, restartChan <-chan error, restartGrendel func(ctx context.Context) error) error {
 	var configContext context.Context
 	var configCancel context.CancelFunc
 	// Channel used to assure only one restartGrendel can be launched
@@ -113,7 +107,7 @@ func ConfigReloader(ctx context.Context, errChan <-chan error, restartGrendel fu
 
 	for {
 		select {
-		case err := <-errChan:
+		case err := <-restartChan:
 			if err != nil {
 				if configContext != nil && configCancel != nil {
 					configCancel()
@@ -125,7 +119,7 @@ func ConfigReloader(ctx context.Context, errChan <-chan error, restartGrendel fu
 				configCancel()
 				select {
 				case err := <-doneChan:
-					if err != nil {
+					if err != nil && !errors.Is(err, context.Canceled) {
 						return err
 					}
 					cmd.Log.Info("loading new config")

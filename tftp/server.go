@@ -51,8 +51,13 @@ func (s *Server) Serve() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	done := make(chan struct{})
 	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error("recover shutdown error", r)
+			}
+		}()
+		defer close(done)
 		s.srv.Shutdown()
-		close(done)
 	}()
 
 	for {

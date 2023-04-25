@@ -25,6 +25,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -44,21 +45,27 @@ var (
 		Short: "Run services",
 		Long:  `Run grendel services`,
 		RunE: func(command *cobra.Command, args []string) error {
-			ctx := command.Context()
+			ctx, cancel := context.WithCancel(command.Context())
+
+			// Trap cleanup
+			cleanChan := make(chan os.Signal, 1)
+			signal.Notify(cleanChan, os.Interrupt, syscall.SIGINT, syscall.SIGTERM)
+			go func() {
+				<-cleanChan
+				cancel()
+			}()
 
 			errChan := make(chan error)
 
-			if imagesFile != "" && hostsFile != "" {
-				go watch.WatchConfig(ctx, func() error {
-					if err := loadHostJSON(); err != nil {
-						return err
-					}
-					if err := loadImageJSON(); err != nil {
-						return err
-					}
-					return nil
-				}, errChan)
-			}
+			go watch.WatchConfig(ctx, []string{hostsFile, imagesFile}, func() error {
+				if err := loadHostJSON(); err != nil {
+					return err
+				}
+				if err := loadImageJSON(); err != nil {
+					return err
+				}
+				return nil
+			}, errChan)
 
 			return watch.ConfigReloader(ctx, errChan, runServices)
 		},
@@ -69,7 +76,9 @@ func init() {
 	serveCmd.PersistentFlags().String("dbpath", ":memory:", "path to database file")
 	viper.BindPFlag("dbpath", serveCmd.PersistentFlags().Lookup("dbpath"))
 	serveCmd.PersistentFlags().StringVar(&hostsFile, "hosts", "", "path to hosts file")
+	serveCmd.MarkPersistentFlagRequired("hosts")
 	serveCmd.PersistentFlags().StringVar(&imagesFile, "images", "", "path to boot images file")
+	serveCmd.MarkPersistentFlagRequired("images")
 	serveCmd.PersistentFlags().StringSlice("services", []string{}, "enabled services")
 	serveCmd.PersistentFlags().StringVar(&listenAddress, "listen", "", "listen address")
 	viper.BindPFlag("services", serveCmd.PersistentFlags().Lookup("services"))
@@ -128,7 +137,7 @@ func loadHostJSON() error {
 		return err
 	}
 
-	cmd.Log.Infof("Successfully loaded %d hosts", len(hostList))
+	cmd.Log.WithField("hosts", string(jsonBlob)).Infof("Successfully loaded hosts")
 	return nil
 }
 
@@ -155,7 +164,7 @@ func loadImageJSON() error {
 		return err
 	}
 
-	cmd.Log.Infof("Successfully loaded %d boot images", len(imageList))
+	cmd.Log.WithField("images", string(jsonBlob)).Infof("Successfully loaded boot images")
 	return nil
 }
 
@@ -174,12 +183,15 @@ func runServices(ctx context.Context) error {
 	go func() {
 		doneChan <- t.Wait()
 	}()
-	select {
-	case err := <-doneChan:
-		return err
-	case <-ctx.Done():
-		t.Kill(ctx.Err())
-		return ctx.Err()
+	for {
+		select {
+		case err := <-doneChan:
+			return err
+		case <-ctx.Done():
+			t.Kill(ctx.Err())
+			cmd.Log.Infof("cancelling runServices")
+			return <-doneChan
+		}
 	}
 }
 
