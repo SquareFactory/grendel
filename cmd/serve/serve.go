@@ -29,6 +29,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"github.com/ubccr/grendel/cmd"
+	"github.com/ubccr/grendel/cmd/watch"
 	"github.com/ubccr/grendel/model"
 	"gopkg.in/tomb.v2"
 )
@@ -43,20 +44,23 @@ var (
 		Short: "Run services",
 		Long:  `Run grendel services`,
 		RunE: func(command *cobra.Command, args []string) error {
-			if hostsFile != "" {
-				err := loadHostJSON()
-				if err != nil {
-					return err
-				}
-			}
-			if imagesFile != "" {
-				err := loadImageJSON()
-				if err != nil {
-					return err
-				}
+			ctx := command.Context()
+
+			errChan := make(chan error)
+
+			if imagesFile != "" && hostsFile != "" {
+				go watch.WatchConfig(ctx, func() error {
+					if err := loadHostJSON(); err != nil {
+						return err
+					}
+					if err := loadImageJSON(); err != nil {
+						return err
+					}
+					return nil
+				}, errChan)
 			}
 
-			return runServices()
+			return watch.ConfigReloader(ctx, errChan, runServices)
 		},
 	}
 )
@@ -155,7 +159,8 @@ func loadImageJSON() error {
 	return nil
 }
 
-func runServices() error {
+func runServices(ctx context.Context) error {
+	doneChan := make(chan error)
 	t := NewInterruptTomb()
 	t.Go(func() error {
 		t.Go(func() error { return serveTFTP(t) })
@@ -166,7 +171,16 @@ func runServices() error {
 		t.Go(func() error { return serveProvision(t) })
 		return nil
 	})
-	return t.Wait()
+	go func() {
+		doneChan <- t.Wait()
+	}()
+	select {
+	case err := <-doneChan:
+		return err
+	case <-ctx.Done():
+		t.Kill(ctx.Err())
+		return ctx.Err()
+	}
 }
 
 func NewInterruptTomb() *tomb.Tomb {
