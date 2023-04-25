@@ -44,28 +44,23 @@ var (
 		Short: "Run services",
 		Long:  `Run grendel services`,
 		RunE: func(command *cobra.Command, args []string) error {
+			ctx := command.Context()
 
-			if hostsFile != "" {
-				os.Setenv("HOSTS_FILE", hostsFile)
-				err := loadHostJSON()
-				if err != nil {
-					return err
-				}
-			}
-			if imagesFile != "" {
-				os.Setenv("IMAGES_FILE", imagesFile)
-				err := loadImageJSON()
-				if err != nil {
-					return err
-				}
-			}
+			errChan := make(chan error)
 
 			if imagesFile != "" && hostsFile != "" {
-				configChan := make(chan *watch.Config)
-				go watch.WatchConfig(context.Background(), configChan)
+				go watch.WatchConfig(ctx, func() error {
+					if err := loadHostJSON(); err != nil {
+						return err
+					}
+					if err := loadImageJSON(); err != nil {
+						return err
+					}
+					return nil
+				}, errChan)
 			}
 
-			return runServices()
+			return watch.ConfigReloader(ctx, errChan, runServices)
 		},
 	}
 )
@@ -164,7 +159,8 @@ func loadImageJSON() error {
 	return nil
 }
 
-func runServices() error {
+func runServices(ctx context.Context) error {
+	doneChan := make(chan error)
 	t := NewInterruptTomb()
 	t.Go(func() error {
 		t.Go(func() error { return serveTFTP(t) })
@@ -175,7 +171,16 @@ func runServices() error {
 		t.Go(func() error { return serveProvision(t) })
 		return nil
 	})
-	return t.Wait()
+	go func() {
+		doneChan <- t.Wait()
+	}()
+	select {
+	case err := <-doneChan:
+		return err
+	case <-ctx.Done():
+		t.Kill(ctx.Err())
+		return ctx.Err()
+	}
 }
 
 func NewInterruptTomb() *tomb.Tomb {
